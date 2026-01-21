@@ -185,3 +185,77 @@ def get_store_data(min_lat, max_lat, min_lon, max_lon):
         ({'category_code': 'CE7'}, '카페')
     ]
     return _get_grouped_data(STORE_CSV_PATH, tasks, min_lat, max_lat, min_lon, max_lon)
+
+@st.cache_data
+def get_lamp_data(
+    csv_path: str = "./data/lampost_v2.csv",
+    min_lat: float = None, max_lat: float = None,
+    min_lon: float = None, max_lon: float = None
+):
+    """
+    가로등/보안등 CSV 로드 + lat/lon 정규화
+    - 컬럼명이 (위도, 경도) 또는 (lat, lon) 또는 유사 이름이어도 최대한 자동 인식
+    - 인코딩 utf-8 / cp949 자동 처리
+    - bounds가 주어지면 즉시 범위 필터링
+    """
+    if not os.path.exists(csv_path):
+        # 파일명이 달라질 수 있어서 흔한 후보를 자동 탐색
+        candidates = [
+            "./data/lampost.csv",
+            "./data/lamps.csv",
+            "./data/lamp.csv",
+            "./data/경상북도_경산시_보안등정보_20250731.csv",
+            "./data/경상북도_경산시_영남대역_보안등.csv",
+            "./data/경상북도_경산시_영남대역_보안동.csv",  # 혹시 오타 파일도 대비
+        ]
+        found = None
+        for c in candidates:
+            if os.path.exists(c):
+                found = c
+                break
+        if found is None:
+            # Home.py에서 st.error 처리하는 편이 자연스럽지만, 여기서는 빈 DF 반환
+            return pd.DataFrame(columns=["lat", "lon"])
+        csv_path = found
+
+    # 인코딩 자동
+    try:
+        df = pd.read_csv(csv_path, encoding="utf-8", low_memory=False)
+    except UnicodeDecodeError:
+        df = pd.read_csv(csv_path, encoding="cp949", low_memory=False)
+
+    # 1) 위도/경도 컬럼 자동 탐색
+    cols = [c.strip() for c in df.columns]
+    df.columns = cols
+
+    # 후보 이름들
+    lat_candidates = ["lat", "latitude", "위도", "LAT", "Latitude", "위도값"]
+    lon_candidates = ["lon", "lng", "long", "longitude", "경도", "LON", "Longitude", "경도값"]
+
+    lat_col = next((c for c in df.columns if c in lat_candidates), None)
+    lon_col = next((c for c in df.columns if c in lon_candidates), None)
+
+    # 2) 그래도 못 찾으면 “부분 문자열”로 최대한 찾기
+    if lat_col is None:
+        lat_col = next((c for c in df.columns if "위도" in c or "lat" in c.lower()), None)
+    if lon_col is None:
+        lon_col = next((c for c in df.columns if "경도" in c or "lon" in c.lower() or "lng" in c.lower()), None)
+
+    if lat_col is None or lon_col is None:
+        # 컬럼을 못 찾으면 빈 DF
+        return pd.DataFrame(columns=["lat", "lon"])
+
+    # 3) 숫자 변환 + 결측 제거
+    df["lat"] = pd.to_numeric(df[lat_col], errors="coerce")
+    df["lon"] = pd.to_numeric(df[lon_col], errors="coerce")
+    df = df.dropna(subset=["lat", "lon"]).copy()
+
+    # 4) bounds 필터
+    if None not in (min_lat, max_lat, min_lon, max_lon):
+        df = df[
+            (df["lat"] >= min_lat) & (df["lat"] <= max_lat) &
+            (df["lon"] >= min_lon) & (df["lon"] <= max_lon)
+        ].copy()
+
+    # 필요한 컬럼만 유지(원하면 원본 컬럼도 유지 가능)
+    return df[["lat", "lon"]].reset_index(drop=True)

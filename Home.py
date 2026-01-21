@@ -11,7 +11,8 @@ from utils.data_loader import (
     get_cctv_data, 
     get_noise_data, 
     get_convenience_data, 
-    get_store_data
+    get_store_data,
+    get_lamp_data
 )
 
 def calculate_distance(lat1, lon1, lat2_arr, lon2_arr):
@@ -31,6 +32,18 @@ FIXED_BOUNDS = {
     'min_lon': 128.750314, 'max_lon': 128.760809
 }
 
+lamp_df = get_lamp_data()
+
+# 지도 범위 제한 (중요)
+if not lamp_df.empty:
+    lamp_df = lamp_df[
+        (lamp_df['lat'] >= FIXED_BOUNDS['min_lat']) &
+        (lamp_df['lat'] <= FIXED_BOUNDS['max_lat']) &
+        (lamp_df['lon'] >= FIXED_BOUNDS['min_lon']) &
+        (lamp_df['lon'] <= FIXED_BOUNDS['max_lon'])
+    ]
+
+
 # 1. 데이터 로드
 with st.spinner("주변 시설 데이터를 불러오는 중입니다..."):
     df_price = get_real_estate_data()
@@ -45,7 +58,12 @@ with st.spinner("주변 시설 데이터를 불러오는 중입니다..."):
     
     noise_df = get_noise_data(**FIXED_BOUNDS)       
     convenience_df = get_convenience_data(**FIXED_BOUNDS) 
-    store_df = get_store_data(**FIXED_BOUNDS)       
+    store_df = get_store_data(**FIXED_BOUNDS) 
+
+    lamp_df = get_lamp_data(  # ✅ 추가
+        min_lat=FIXED_BOUNDS['min_lat'], max_lat=FIXED_BOUNDS['max_lat'],
+        min_lon=FIXED_BOUNDS['min_lon'], max_lon=FIXED_BOUNDS['max_lon']
+    )      
 
 BUILD_PATH = r"./data/buildings.csv"
 if not os.path.exists(BUILD_PATH):
@@ -66,6 +84,7 @@ with st.sidebar:
 
     st.divider()
     st.subheader("시설 표시")
+    show_lamp = st.toggle("가로등 (💡)", value=False)
     show_cctv = st.toggle("CCTV (🎥)", value=True)
     show_conv = st.toggle("편의점 (🛒)", value=True)
     show_noise = st.toggle("소음원 (🍺/🎵)", value=False)
@@ -151,10 +170,11 @@ final_cctv = cctv_df if show_cctv else pd.DataFrame()
 final_noise = noise_df if show_noise else pd.DataFrame()
 final_conv = convenience_df if show_conv else pd.DataFrame()
 final_store = store_df if show_store else pd.DataFrame()
+final_lamp = lamp_df if show_lamp else pd.DataFrame()
 
 if len(block_stats) > 0:
     st.success(f"📍 총 **{len(block_stats)}개**의 원룸 블록을 찾았습니다.")
-    m = draw_map(clustered_df, block_stats, final_cctv, final_noise, final_conv, final_store)
+    m = draw_map(clustered_df, block_stats, final_cctv, final_noise, final_conv, final_store,final_lamp)
     if show_slope and m is not None:
         add_slope_overlay(
             m,

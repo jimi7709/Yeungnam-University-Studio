@@ -2,8 +2,10 @@ import folium
 import pandas as pd
 import numpy as np
 from scipy.spatial import ConvexHull, QhullError
+from folium.plugins import HeatMap
 
-def draw_map(clustered_df, block_stats, cctv_df=None, noise_df=None, conv_df=None, store_df=None):
+
+def draw_map(clustered_df, block_stats, cctv_df=None, noise_df=None, conv_df=None, store_df=None, lamp_df=None):
     
     m = folium.Map(location=[35.8359, 128.7535], zoom_start=16, tiles='CartoDB positron')
 
@@ -142,9 +144,28 @@ def draw_map(clustered_df, block_stats, cctv_df=None, noise_df=None, conv_df=Non
                 tooltip="<b>CCTV</b>",
                 icon=folium.Icon(color='blue', icon='video-camera', prefix='fa')
             ).add_to(m)
+
+    if lamp_df is not None and not lamp_df.empty:
+        heat_data = lamp_df[['lat', 'lon']].dropna().values.tolist()
+
+        # FeatureGroup로 감싸면 LayerControl로 ON/OFF 가능
+        lamp_layer = folium.FeatureGroup(name="가로등 밀도(HeatMap)", show=True)
+
+        HeatMap(
+            heat_data,
+            name="가로등 밀도",
+            radius=18,        # 조도 범위 느낌
+            blur=12,
+            min_opacity=0.25,
+            max_zoom=18
+        ).add_to(lamp_layer)
+        lamp_layer.add_to(m)
             
     add_markers_smart(conv_df, 'orange', 'shopping-cart')
     add_markers_smart(noise_df, 'purple', 'question') 
     add_markers_smart(store_df, 'green', 'cutlery')
+
+    # folium.LayerControl(collapsed=False).add_to(m)
+
 
     return m

@@ -97,5 +97,8 @@ def add_slope_overlay(
         bounds=bounds,
         opacity=opacity,
         name="Slope (경사도)",
-        interactive=False
+        interactive=False,
+        zindex= 900
     ).add_to(folium_map)
+
+
