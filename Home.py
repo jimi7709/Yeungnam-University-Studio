@@ -76,7 +76,7 @@ def calculate_details_for_visual(block_lat, block_lon):
         "timeline": timeline
     }
 
-st.set_page_config(layout="wide", page_title="SweetHome - 영남대 원룸")
+st.set_page_config(layout="wide", page_title="영남대 원룸추천")
 st.title("📍 SweetHome: 영남대 자취방 지도 (블록 분석)")
 
 FIXED_BOUNDS = {

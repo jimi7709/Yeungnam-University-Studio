@@ -34,6 +34,8 @@ NOISE_CSV_PATH = os.path.join(DATA_DIR, "noise.csv")
 CONVENIENCE_CSV_PATH = os.path.join(DATA_DIR, "convenience.csv")
 STORE_CSV_PATH = os.path.join(DATA_DIR, "store.csv")
 LAMP_CSV_PATH = os.path.join(DATA_DIR, "lamp.csv")
+ROOM_CSV_PATH = os.path.join(DATA_DIR, "room.csv")
+
 
 TARGET_DONGS = ["조영동", "대동", "임당동", "부적리"]
 
@@ -233,3 +235,28 @@ def get_store_data(min_lat, max_lat, min_lon, max_lon):
         ({'category_code': 'CE7'}, '카페')
     ]
     return _get_grouped_data(STORE_CSV_PATH, tasks, min_lat, max_lat, min_lon, max_lon)
+
+def get_real_estate_data(lawd_cd="47290", months=24, force_update=False):
+    if os.path.exists(ROOM_CSV_PATH) and not force_update:
+        try: df = pd.read_csv(ROOM_CSV_PATH, encoding='utf-8-sig')
+        except: df = pd.read_csv(ROOM_CSV_PATH, encoding='cp949')
+        df.columns = df.columns.str.replace('\ufeff', '').str.strip()
+        if '법정동' in df.columns:
+            mask = df['법정동'].apply(lambda x: any(target in str(x) for target in TARGET_DONGS))
+            return df[mask]
+    
+    date_list = [ (datetime.now() - relativedelta(months=i)).strftime("%Y%m") for i in range(months) ]
+    all_data = []
+    for ymd in date_list:
+        all_data.extend(fetch_one_month_data(lawd_cd, ymd))
+        time.sleep(0.05)
+    
+    if not all_data: return pd.DataFrame()
+    df = pd.DataFrame(all_data)
+    df.columns = df.columns.str.replace('\ufeff', '').str.strip()
+    mask = df['법정동'].apply(lambda x: any(target in str(x) for target in TARGET_DONGS))
+    df_filtered = df[mask].copy()
+    current_year = datetime.now().year
+    df_filtered['노후도'] = df_filtered['건축년도'].apply(lambda x: current_year - x if x > 0 else 0)
+    df_filtered.to_csv(ROOM_CSV_PATH, index=False, encoding='utf-8-sig')
+    return df_filtered

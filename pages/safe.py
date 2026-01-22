@@ -191,20 +191,50 @@ if len(clustered_df) == 0:
     st.stop()
 
 # ✅ block_stats에 '노후도' 포함 (KeyError 해결 포인트)
-block_stats = clustered_df.groupby("cluster").agg({
-    "lat": "mean",
-    "lon": "mean",
-    "노후도": "mean",
-    "월세": "mean",
-    "보증금": "mean",
-    "건물명": "count" if "건물명" in clustered_df.columns else "size"
-}).reset_index()
+# block_stats = clustered_df.groupby("cluster").agg({
+#     "lat": "mean",
+#     "lon": "mean",
+#     "노후도": "mean",
+#     "월세": "mean",
+#     "보증금": "mean",
+#     "건물명": "count" if "건물명" in clustered_df.columns else "size"
+# }).reset_index()
+# ✅ block_stats 만들기 (room_count 생성 포함)
+if "건물명" in clustered_df.columns:
+    block_stats = (
+        clustered_df.groupby("cluster")
+        .agg(
+            lat=("lat", "mean"),
+            lon=("lon", "mean"),
+            노후도=("노후도", "mean"),
+            월세=("월세", "mean"),
+            보증금=("보증금", "mean"),
+            room_count=("건물명", "count"),   # ✅ 새 컬럼 생성
+        )
+        .reset_index()
+    )
+else:
+    # '건물명'이 없으면, 행 개수(size)로 대체
+    block_stats = (
+        clustered_df.groupby("cluster")
+        .agg(
+            lat=("lat", "mean"),
+            lon=("lon", "mean"),
+            노후도=("노후도", "mean"),
+            월세=("월세", "mean"),
+            보증금=("보증금", "mean"),
+            room_count=("lat", "size"),      # ✅ size는 아무 컬럼이나 가능(결측 없을 걸 추천)
+        )
+        .reset_index()
+    )
+
+
 
 # 혹시 건물명 컬럼 없어서 size로 들어온 경우 컬럼이 '건물명'이 아닐 수 있음 → 강제 정리
-if "건물명" not in block_stats.columns:
-    # 마지막 컬럼이 count로 들어왔을 가능성이 높음
-    last_col = block_stats.columns[-1]
-    block_stats = block_stats.rename(columns={last_col: "건물명"})
+# if "건물명" not in block_stats.columns:
+#     # 마지막 컬럼이 count로 들어왔을 가능성이 높음
+#     last_col = block_stats.columns[-1]
+#     block_stats = block_stats.rename(columns={last_col: "건물명"})
 
 # 주변 시설 카운트
 block_stats["cctv_count"] = block_stats.apply(

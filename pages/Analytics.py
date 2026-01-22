@@ -12,6 +12,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 import statsmodels.api as sm
+import os
+from sklearn.model_selection import KFold, cross_val_score
 
 
 # 🔽 바로 여기
@@ -23,7 +25,7 @@ else:
     plt.rc("font", family="NanumGothic")
 
 plt.rcParams["axes.unicode_minus"] = False
-st.set_page_config(page_title="Analytics - 월세 × (가로등/CCTV)", layout="wide")
+st.set_page_config(page_title="데이터 분석 및 시각화", layout="wide")
 st.title("데이터 분석 및 시각화")
 
 # =========================
@@ -297,14 +299,15 @@ zig_an["cctv_bin"] = make_bins(zig_an[cctv_col], q=BIN_Q)
 #     "tab10: 2D(거리-월세, 색=노후도)",
 #     "tab11: 통합 회귀(노후도+역세권+생활인프라)"
 # ])
-tab4,  tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
+tab4,  tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
     "월세 × 지하철역 거리",
     "월세 × 생활 인프라(선택)",
     "다변량 회귀 분석",
     "월세 × 노후도(건물) 상관관계",
     "tab9: 회귀(sklearn)",
     "tab10: 2D(거리-월세, 색=노후도)",
-    "tab11: 통합 회귀(노후도+역세권+생활인프라)"
+    "tab11: 통합 회귀(노후도+역세권+생활인프라)",
+    "월세 설명력의 한계 분석",
 ])
 
 
@@ -1708,3 +1711,149 @@ with tab11:
     plt.title("Test: 잔차 플롯 (통합 회귀)")
     plt.grid(True)
     #st.pyplot(fig2)
+
+
+# -------------------------
+# 탭12: 월세 설명력의 한계 분석 (Explainability)
+# -------------------------
+with tab12:
+    st.subheader("📊 월세 설명력의 한계 분석")
+    st.caption(
+        "환경 데이터(CCTV, 가로등, 소음원 등)로 월세를 어디까지 설명할 수 있는지, "
+        "그리고 설명되지 않는 영역은 무엇인지 확인합니다."
+    )
+
+    # =========================
+    # 1) 데이터 로드
+    # =========================
+    DATA_PATH = "./data/block_stats.csv"
+
+    if not os.path.exists(DATA_PATH):
+        st.error("❌ block_stats.csv가 없습니다. Home/SAFE 페이지를 먼저 실행하세요.")
+        st.stop()
+
+    df = pd.read_csv(DATA_PATH)
+
+    # =========================
+    # 2) 분석 변수 설정
+    # =========================
+    TARGET = "월세"
+    FEATURES = [
+        "cctv_count",
+        "lamp_count",
+        "conv_count",
+        "noise_count",
+        "store_count",
+    ]
+
+    missing = [c for c in [TARGET] + FEATURES if c not in df.columns]
+    if missing:
+        st.error(f"❌ 필요한 컬럼이 없습니다: {missing}")
+        st.stop()
+
+    df = df[[TARGET] + FEATURES].dropna().copy()
+
+    X = df[FEATURES]
+    y = df[TARGET]
+
+    # =========================
+    # 3) 선형 회귀 + 교차검증
+    # =========================
+    model = LinearRegression()
+
+    cv = KFold(n_splits=5, shuffle=True, random_state=42)
+    cv_scores = cross_val_score(model, X, y, cv=cv, scoring="r2")
+
+    model.fit(X, y)
+    y_pred = model.predict(X)
+
+    # =========================
+    # 4) 핵심 지표
+    # =========================
+    st.markdown("### 📌 핵심 결과")
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("전체 설명력 (R²)", f"{r2_score(y, y_pred):.3f}")
+    col2.metric("교차검증 평균 R²", f"{cv_scores.mean():.3f}")
+    col3.metric("설명되지 않은 비율", f"{1 - cv_scores.mean():.1%}")
+
+    st.markdown(
+        """
+**해석**
+- R²는 *환경 변수로 월세 변동을 얼마나 설명할 수 있는지*를 의미합니다.  
+- 값이 높을수록 환경 요인의 설명력이 크고, 낮을수록 다른 요인의 영향이 큽니다.
+"""
+    )
+
+    st.divider()
+
+    # =========================
+    # 5) 실제값 vs 예측값
+    # =========================
+    st.markdown("### 📈 실제 월세 vs 예측 월세")
+
+    df_plot = pd.DataFrame({
+        "실제 월세": y,
+        "예측 월세": y_pred
+    })
+
+    fig_scatter = px.scatter(
+        df_plot,
+        x="실제 월세",
+        y="예측 월세",
+        title="환경 변수 기반 예측 월세 vs 실제 월세",
+        opacity=0.7
+    )
+    fig_scatter.add_shape(
+        type="line",
+        x0=y.min(), y0=y.min(),
+        x1=y.max(), y1=y.max(),
+        line=dict(dash="dash", color="gray")
+    )
+
+    st.plotly_chart(fig_scatter, use_container_width=True)
+
+    st.caption(
+        "점선에 가까울수록 예측이 잘 맞은 경우이며, "
+        "점선에서 멀수록 환경 변수만으로 설명하기 어려운 블록입니다."
+    )
+
+    st.divider()
+
+    # =========================
+    # 6) 잔차(설명되지 않은 부분) 분석
+    # =========================
+    st.markdown("### 📉 설명되지 않은 월세(잔차) 분포")
+
+    residuals = y - y_pred
+
+    fig_res = px.histogram(
+        residuals,
+        nbins=40,
+        title="환경 변수로 설명되지 않은 월세 차이(잔차)"
+    )
+    fig_res.update_xaxes(title="실제 월세 − 예측 월세")
+    fig_res.update_yaxes(title="블록 수")
+
+    st.plotly_chart(fig_res, use_container_width=True)
+
+    st.caption(
+        "이 분포는 환경 데이터만으로는 설명할 수 없는 영역을 의미합니다. "
+        "해당 차이는 신축 여부, 건물 옵션, 내부 상태, 관리비 등의 숨은 요인일 가능성이 큽니다."
+    )
+
+    st.divider()
+
+    # =========================
+    # 7) 최종 결론
+    # =========================
+    st.markdown("### 🧠 최종 결론")
+
+    st.markdown(
+        f"""
+- 환경 변수(CCTV, 가로등, 소음원 등)만으로 월세 변동의  
+  **약 {cv_scores.mean():.1%}** 정도를 설명할 수 있었습니다.
+- 나머지 **{1 - cv_scores.mean():.1%}**는 본 데이터에 포함되지 않은 요인에 의해 결정됩니다.
+- 즉, 월세는 **환경 요인 + 건물·내부·시장 요인의 복합 결과**임을 확인할 수 있습니다.
+"""
+    )
