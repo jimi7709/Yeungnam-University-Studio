@@ -6,7 +6,7 @@
     "configurations": [
 
         {
-            "name": "StreamLit",
+            "name": "Streamlit",
             "type": "debugpy",
             "request": "launch",
             "module":"streamlit",
