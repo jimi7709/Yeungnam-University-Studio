@@ -302,11 +302,11 @@ zig_an["cctv_bin"] = make_bins(zig_an[cctv_col], q=BIN_Q)
 tab4,  tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
     "월세 × 지하철역 거리",
     "월세 × 생활 인프라(선택)",
-    "다변량 회귀 분석",
-    "월세 × 노후도(건물) 상관관계",
-    "tab9: 회귀(sklearn)",
-    "tab10: 2D(거리-월세, 색=노후도)",
-    "tab11: 통합 회귀(노후도+역세권+생활인프라)",
+    "여러 요인 회귀 분석",
+    "월세 × 노후도(연차) 상관관계",
+    "월세 x 노후도(연차) + 역세권 거리",
+    "2D(거리-월세, 색=노후도)",
+    "통합 회귀(노후도+역세권+생활인프라)",
     "월세 설명력의 한계 분석",
 ])
 
@@ -765,6 +765,10 @@ with tab6:
                 y=y_line,
                 mode="lines",
                 name=f"trend: y = {a:.4f}x + {b:.2f}",
+                line=dict(
+                color="red",   # 🔥 매우 진한 색
+                width=4          # 🔥 두께 (3~5 추천)
+                )
             )
         )
 
@@ -774,7 +778,6 @@ with tab6:
     )
 
     st.plotly_chart(fig, use_container_width=True)
-
     # =========================
     # 6) 상관계수 계산
     # =========================
@@ -784,10 +787,56 @@ with tab6:
     st.info(
         f"📊 상관계수 결과\n\n"
         f"- Pearson r (선형 상관): **{pearson_r:.4f}**\n"
-        f"- Spearman ρ (순위 상관): **{spearman_r:.4f}**\n\n"
+        #f"- Spearman ρ (순위 상관): **{spearman_r:.4f}**\n\n"
         f"※ r < 0 : 거리가 가까울수록 월세가 높은 경향\n"
         f"※ r > 0 : 거리가 멀수록 월세가 높은 경향"
     )
+       # =========================
+    # 5.5) (추가) infra_cols 전체 상관계수 표
+    # =========================
+    rows = []
+    y_all = pd.to_numeric(zig[use_rent_col], errors="coerce")
+
+    for col in infra_cols:
+        x_all = pd.to_numeric(zig[col], errors="coerce")
+        tmp = pd.DataFrame({"x": x_all, "y": y_all}).dropna()
+
+        n = len(tmp)
+        if n < 3 or tmp["x"].nunique() < 2:
+            pearson = np.nan
+            spearman = np.nan
+        else:
+            pearson = tmp["x"].corr(tmp["y"], method="pearson")
+            spearman = tmp["x"].corr(tmp["y"], method="spearman")
+
+        rows.append({
+            "변수": col,
+            "표본수(n)": n,
+            "Pearson r": pearson,
+            #"Spearman ρ": spearman,
+        })
+
+    df_corr_table = pd.DataFrame(rows)
+
+    # 보기 좋게 소수점 정리(표시용)
+    df_corr_show = df_corr_table.copy()
+    df_corr_show["Pearson r"] = df_corr_show["Pearson r"].round(4)
+    #df_corr_show["Spearman ρ"] = df_corr_show["Spearman ρ"].round(4)
+
+    st.markdown("#### 📋 생활 인프라 변수별 상관계수 요약 (월세 vs 거리)")
+
+    def highlight_pharmacy_and_cafe(row):
+        highlight_targets = ["약국_거리(m)", "카페_거리(m)"]
+        if row["변수"] in highlight_targets:
+            return ["color: red; font-weight: bold;"] * len(row)
+        return [""] * len(row)
+
+    st.dataframe(
+        df_corr_show.style.apply(highlight_pharmacy_and_cafe, axis=1),
+        use_container_width=True
+    )
+
+
 
 
 
